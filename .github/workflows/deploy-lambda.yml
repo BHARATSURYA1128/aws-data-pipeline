@@ -1,0 +1,50 @@
+name: Deploy Lambda via CloudFormation
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Upload to S3 and deploy CF stack
+    runs-on: ubuntu-latest
+
+    env:
+      AWS_REGION: us-east-1
+      STACK_NAME: s3-jbsbucket-stack
+      LAMBDA_BUCKET: s3-jbsbucket-stack-lambda-deploy
+      LAMBDA_ZIP: lambda.zip
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Set up AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Zip Lambda function
+        run: |
+          cd lambda
+          zip -r ../${{ env.LAMBDA_ZIP }} ./
+          cd ..
+
+      - name: Upload to S3
+        run: aws s3 cp ${{ env.LAMBDA_ZIP }} s3://${{ env.LAMBDA_BUCKET }}/${{ env.LAMBDA_ZIP }}
+
+      - name: Deploy CloudFormation
+        run: |
+          aws cloudformation deploy \
+            --template-file template.yaml \
+            --stack-name ${{ env.STACK_NAME }} \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --parameter-overrides LambdaCodeS3Key=${{ env.LAMBDA_ZIP }}
